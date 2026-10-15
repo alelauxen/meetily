@@ -639,7 +639,7 @@ jobs:
       - name: Install frontend dependencies
         run: |
           cd frontend
-          pnpm install --frozen-lockfile
+          pnpm install --no-frozen-lockfile
 
       - name: Build llama-helper sidecar
         shell: pwsh

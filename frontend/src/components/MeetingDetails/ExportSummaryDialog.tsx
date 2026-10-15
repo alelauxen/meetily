@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
-import { FileDown, FileText, Loader2, Plus, Trash2, UserPlus } from 'lucide-react';
+import { Check, FileDown, FileText, ImagePlus, Loader2, Plus, Trash2, UserPlus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,7 +16,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  buildBodyHtml,
+  ExportOptions,
+  imageFileToLogo,
+  loadLogos,
+  loadSelectedLogoId,
+  LogoImage,
+  saveLogos,
+  saveSelectedLogoId,
   extractParticipants,
   formatCpf,
   printAsPdf,
@@ -62,11 +68,18 @@ export function ExportSummaryDialog({
   const [participants, setParticipants] = useState<string[]>([]);
   const [signatories, setSignatories] = useState<Signatory[]>([]);
   const [busy, setBusy] = useState<'pdf' | 'word' | null>(null);
+  const [logos, setLogos] = useState<LogoImage[]>([]);
+  const [selectedLogoId, setSelectedLogoId] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Ao abrir: carrega cabeçalho e assinantes salvos, e os participantes do resumo
   useEffect(() => {
     if (!open) return;
     setOrganization(loadText(ORG_KEY));
+    const savedLogos = loadLogos();
+    setLogos(savedLogos);
+    const sel = loadSelectedLogoId();
+    setSelectedLogoId(savedLogos.some(l => l.id === sel) ? sel : '');
     const saved = loadSignatories();
     setSignatories(saved.length ? saved : [emptySignatory()]);
     getMarkdown()
@@ -79,9 +92,38 @@ export function ExportSummaryDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const dateLabel = meetingDate
-    ? new Date(meetingDate).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })
-    : undefined;
+  // A data da reunião já aparece no corpo da ata; o cabeçalho leva só logo e empresa.
+  void meetingDate;
+
+  // ----- logos -----
+  const selectLogo = (id: string) => {
+    setSelectedLogoId(id);
+    saveSelectedLogoId(id);
+  };
+  const addLogo = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const logo = await imageFileToLogo(file);
+      const next = [...logos, logo];
+      if (!saveLogos(next)) {
+        toast.error('Não há espaço para salvar mais logos. Remova algum da lista.');
+        return;
+      }
+      setLogos(next);
+      selectLogo(logo.id);
+      toast.success(`Logo "${logo.name}" salvo para as próximas exportações`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Não foi possível usar essa imagem');
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+  const removeLogo = (id: string) => {
+    const next = logos.filter(l => l.id !== id);
+    saveLogos(next);
+    setLogos(next);
+    if (selectedLogoId === id) selectLogo('');
+  };
 
   // ----- participantes -----
   const setParticipant = (i: number, value: string) =>
@@ -112,7 +154,7 @@ export function ExportSummaryDialog({
     });
   };
 
-  const prepare = async (): Promise<string | null> => {
+  const prepare = async (): Promise<{ markdown: string; opts: ExportOptions } | null> => {
     const markdown = await getMarkdown();
     if (!markdown.trim()) {
       toast.error('Não há resumo para exportar');
@@ -126,22 +168,25 @@ export function ExportSummaryDialog({
     }
     store(ORG_KEY, organization);
     store(SIGNATORIES_KEY, JSON.stringify(filledSignatories));
-    return buildBodyHtml(markdown, {
-      title: meetingTitle,
-      date: dateLabel,
-      organization: organization.trim(),
-      participants,
-      signatories: filledSignatories,
-    });
+    return {
+      markdown,
+      opts: {
+        title: meetingTitle,
+        organization: organization.trim(),
+        logo: logos.find(l => l.id === selectedLogoId) || null,
+        participants,
+        signatories: filledSignatories,
+      },
+    };
   };
 
   const handlePdf = async () => {
     setBusy('pdf');
     try {
-      const body = await prepare();
-      if (!body) return;
+      const data = await prepare();
+      if (!data) return;
       onOpenChange(false);
-      await printAsPdf(body, meetingTitle);
+      await printAsPdf(data.markdown, data.opts);
       toast.info('Na janela de impressão, escolha "Microsoft Print to PDF" (ou "Salvar como PDF")');
     } catch (e) {
       console.error('Falha ao exportar PDF:', e);
@@ -154,9 +199,9 @@ export function ExportSummaryDialog({
   const handleWord = async () => {
     setBusy('word');
     try {
-      const body = await prepare();
-      if (!body) return;
-      const path = await saveAsWord(body, meetingTitle);
+      const data = await prepare();
+      if (!data) return;
+      const path = await saveAsWord(data.markdown, data.opts);
       onOpenChange(false);
       toast.success('Arquivo Word salvo em Downloads', {
         description: path,
@@ -186,15 +231,75 @@ export function ExportSummaryDialog({
 
         <div className="grid gap-6 py-2">
           {/* Cabeçalho */}
-          <div className="grid gap-2">
-            <Label htmlFor="export-org">Empresa / órgão (cabeçalho)</Label>
-            <Input
-              id="export-org"
-              placeholder="Opcional"
-              value={organization}
-              onChange={e => setOrganization(e.target.value)}
-            />
-          </div>
+          <section className="grid gap-3">
+            <div className="grid gap-2">
+              <Label htmlFor="export-org">Empresa / órgão (cabeçalho, centralizado)</Label>
+              <Input
+                id="export-org"
+                placeholder="Opcional"
+                value={organization}
+                onChange={e => setOrganization(e.target.value)}
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <div className="flex items-center justify-between">
+                <Label>Logo do cabeçalho</Label>
+                <Button type="button" variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()}>
+                  <ImagePlus /> Adicionar logo
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif,image/bmp,image/webp,image/svg+xml"
+                  className="hidden"
+                  onChange={e => addLogo(e.target.files?.[0])}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Logos adicionados ficam salvos no app. Nas próximas atas é só clicar no logo para usar.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => selectLogo('')}
+                  className={`flex h-16 w-24 items-center justify-center rounded-md border text-xs ${
+                    selectedLogoId === '' ? 'border-2 border-primary' : 'text-muted-foreground'
+                  }`}
+                >
+                  Sem logo
+                </button>
+                {logos.map(l => (
+                  <div key={l.id} className="relative">
+                    <button
+                      type="button"
+                      title={l.name}
+                      onClick={() => selectLogo(l.id)}
+                      className={`flex h-16 w-24 items-center justify-center rounded-md border bg-white p-1 ${
+                        selectedLogoId === l.id ? 'border-2 border-primary' : ''
+                      }`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={l.dataUrl} alt={l.name} className="max-h-full max-w-full object-contain" />
+                    </button>
+                    {selectedLogoId === l.id && (
+                      <span className="absolute left-1 top-1 rounded-full bg-primary p-0.5 text-primary-foreground">
+                        <Check className="h-3 w-3" />
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      title="Remover logo da lista"
+                      onClick={() => removeLogo(l.id)}
+                      className="absolute -right-2 -top-2 rounded-full border bg-background p-0.5 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
 
           {/* Participantes */}
           <section className="grid gap-2">
