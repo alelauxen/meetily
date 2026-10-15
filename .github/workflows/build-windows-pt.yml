@@ -1,7 +1,7 @@
 name: "Meetily PT - Instalador Windows"
 
 # Versão personalizada: compila o instalador do Windows a cada envio para a branch main
-# (ou manualmente pela aba Actions) e publica em Releases.
+# (ou manualmente pela aba Actions) e publica em Releases do GitHub.
 on:
   push:
     branches: [main]
