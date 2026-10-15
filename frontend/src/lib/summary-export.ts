@@ -9,11 +9,91 @@
 import { writeTextFile, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { downloadDir, join } from '@tauri-apps/api/path';
 
+export interface Signatory {
+  name: string;
+  cpf: string;
+  role?: string;
+}
+
 export interface ExportOptions {
   title: string;
   date?: string;
   organization?: string;
-  signatures?: string[];
+  signatories?: Signatory[];
+  /** Se definido, substitui a lista da seção "Participantes" do resumo. */
+  participants?: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Participantes: localizar e substituir a seção no Markdown do resumo
+// ---------------------------------------------------------------------------
+
+const PARTICIPANTS_RE = /participantes|participants|presentes|attendees/i;
+
+function headingText(line: string): string | null {
+  const t = line.trim();
+  let m = t.match(/^#{1,6}\s+(.*?)\s*#*$/);
+  if (m) return m[1].replace(/\*\*/g, '').trim();
+  m = t.match(/^\*\*([^*]+)\*\*:?$/);
+  if (m) return m[1].trim();
+  return null;
+}
+
+/** Retorna [início, fim) das linhas de conteúdo da seção de participantes, ou null. */
+function findParticipantsSection(lines: string[]): { heading: number; start: number; end: number } | null {
+  for (let i = 0; i < lines.length; i++) {
+    const h = headingText(lines[i]);
+    if (h !== null && PARTICIPANTS_RE.test(h)) {
+      let end = i + 1;
+      while (end < lines.length && headingText(lines[end]) === null) end++;
+      return { heading: i, start: i + 1, end };
+    }
+  }
+  return null;
+}
+
+/** Extrai os nomes de participantes do resumo (vazio se não identificados). */
+export function extractParticipants(markdown: string): string[] {
+  const lines = markdown.replace(/\r/g, '').split('\n');
+  const sec = findParticipantsSection(lines);
+  if (!sec) return [];
+  const names: string[] = [];
+  for (const line of lines.slice(sec.start, sec.end)) {
+    const t = line.trim();
+    if (!t) continue;
+    if (/não identificad|nao identificad|not identified/i.test(t)) continue;
+    const m = t.match(/^([-*+]|\d+[.)])\s+(.*)$/);
+    const name = (m ? m[2] : t).replace(/\*\*/g, '').trim();
+    if (name) names.push(name);
+  }
+  return names;
+}
+
+/** Substitui (ou cria) a seção de participantes com a lista informada. */
+export function replaceParticipants(markdown: string, names: string[]): string {
+  const clean = names.map(n => n.trim()).filter(Boolean);
+  const lines = markdown.replace(/\r/g, '').split('\n');
+  const body = clean.length
+    ? clean.map(n => `- ${n}`)
+    : ['- Participantes não identificados na gravação'];
+  const sec = findParticipantsSection(lines);
+  if (sec) {
+    return [...lines.slice(0, sec.start), '', ...body, '', ...lines.slice(sec.end)].join('\n');
+  }
+  if (!clean.length) return markdown;
+  // Sem seção: insere logo após o título (ou no início)
+  const titleIdx = lines.findIndex(l => /^#\s+/.test(l.trim()));
+  const at = titleIdx >= 0 ? titleIdx + 1 : 0;
+  return [...lines.slice(0, at), '', '## Participantes', '', ...body, '', ...lines.slice(at)].join('\n');
+}
+
+/** Formata CPF como XXX.XXX.XXX-XX enquanto o usuário digita. */
+export function formatCpf(value: string): string {
+  const d = value.replace(/\D/g, '').slice(0, 11);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `${d.slice(0, 3)}.${d.slice(3)}`;
+  if (d.length <= 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`;
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
 }
 
 function esc(s: string): string {
@@ -119,8 +199,10 @@ const DOC_CSS = `
   table { border-collapse: collapse; width: 100%; margin: 6px 0 10px; font-size: 11pt; }
   th, td { border: 1px solid #000; padding: 4px 6px; vertical-align: top; text-align: left; }
   th { background: #e6e6e6; }
-  .assin { margin-top: 48px; }
-  .assin div { display: inline-block; width: 45%; margin: 40px 2% 0; border-top: 1px solid #000; text-align: center; padding-top: 4px; font-size: 11pt; }
+  table.assin { margin-top: 36px; border: 0; width: 100%; }
+  table.assin td { border: 0; width: 50%; padding: 48px 16px 0; text-align: center; vertical-align: top; font-size: 11pt; page-break-inside: avoid; }
+  table.assin .linha { border-top: 1px solid #000; padding-top: 4px; }
+  table.assin .nome { font-weight: bold; }
 `;
 
 /** Monta o corpo da ata (sem <html>), a partir do Markdown do resumo. */
@@ -132,13 +214,24 @@ export function buildBodyHtml(markdown: string, opts: ExportOptions): string {
     if (opts.date) html += `<div class="data">${esc(opts.date)}</div>`;
     html += '</div>';
   }
-  let body = markdownToHtml(markdown);
+  const md = opts.participants ? replaceParticipants(markdown, opts.participants) : markdown;
+  let body = markdownToHtml(md);
   // Usa o título gerado pela IA; se não houver, usa o título da reunião.
   if (!/^<h1>/.test(body)) body = `<h1>${esc(opts.title || 'Ata de Reunião')}</h1>` + body;
   html += body;
-  const sigs = (opts.signatures || []).map(s => s.trim()).filter(Boolean);
+  const sigs = (opts.signatories || []).filter(s => s.name.trim());
   if (sigs.length) {
-    html += '<div class="assin">' + sigs.map(n => `<div>${esc(n)}</div>`).join('') + '</div>';
+    const cell = (s: Signatory) =>
+      '<td><div class="linha">' +
+      `<div class="nome">${esc(s.name.trim())}</div>` +
+      (s.cpf.trim() ? `<div>CPF: ${esc(s.cpf.trim())}</div>` : '') +
+      (s.role && s.role.trim() ? `<div>${esc(s.role.trim())}</div>` : '') +
+      '</div></td>';
+    let rows = '';
+    for (let i = 0; i < sigs.length; i += 2) {
+      rows += '<tr>' + cell(sigs[i]) + (sigs[i + 1] ? cell(sigs[i + 1]) : '<td></td>') + '</tr>';
+    }
+    html += `<table class="assin">${rows}</table>`;
   }
   return html;
 }
