@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { MeetingSummary, SummaryProcessResponse } from '@/types';
 import { useSidebar } from '@/components/Sidebar/SidebarProvider';
@@ -60,6 +61,8 @@ export default function PageContent({
   const [customPrompt, setCustomPrompt] = useState<string>('');
   const isRecording = false;
   const [activeTab, setActiveTab] = useState<MeetingDetailsTab>('transcript');
+  // Versão personalizada: termo buscado na barra lateral (?q=...) para grifar na transcrição
+  const searchQuery = useSearchParams().get('q') || '';
 
   // Ref to store the modal open function from SummaryGeneratorButtonGroup
   const openModelSettingsRef = useRef<(() => void) | null>(null);
@@ -146,6 +149,14 @@ export default function PageContent({
     Analytics.trackPageView('meeting_details');
   }, []);
 
+  // Veio da busca da barra lateral: mantém a transcrição visível para mostrar os grifos
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      manuallySelectedTabMeetingIdsRef.current.add(meeting.id);
+      setActiveTab('transcript');
+    }
+  }, [meeting.id, searchQuery]);
+
   useEffect(() => {
     if (
       (meetingData.aiSummary || summaryGeneration.summaryStatus === 'completed')
@@ -218,6 +229,7 @@ export default function PageContent({
               meetingId={meeting.id}
               meetingFolderPath={meeting.folder_path}
               onRefetchTranscripts={onRefetchTranscripts}
+              searchQuery={searchQuery}
             />
           }
           summary={

@@ -580,7 +580,13 @@ const Sidebar: React.FC = () => {
               setCurrentMeeting({ id: item.id, title: item.title });
               const basePath = item.id.startsWith('intro-call') ? '/' :
                 item.id.includes('-') ? `/meeting-details?id=${item.id}` : `/notes/${item.id}`;
-              router.push(basePath);
+              // Versão personalizada: se a reunião apareceu pela busca, leva o termo
+              // para grifar na transcrição (como o Ctrl+F)
+              const q = searchQuery.trim();
+              const withQuery = hasTranscriptMatch && q && basePath.startsWith('/meeting-details')
+                ? `${basePath}&q=${encodeURIComponent(q)}`
+                : basePath;
+              router.push(withQuery);
             }
           }}
         >

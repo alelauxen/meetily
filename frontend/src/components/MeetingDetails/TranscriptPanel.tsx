@@ -28,6 +28,9 @@ interface TranscriptPanelProps {
   meetingId?: string;
   meetingFolderPath?: string | null;
   onRefetchTranscripts?: () => Promise<void>;
+
+  // Versão personalizada: termo da busca da barra lateral para grifar na transcrição
+  searchQuery?: string;
 }
 
 export function TranscriptPanel({
@@ -48,6 +51,7 @@ export function TranscriptPanel({
   meetingId,
   meetingFolderPath,
   onRefetchTranscripts,
+  searchQuery = '',
 }: TranscriptPanelProps) {
   // Convert transcripts to segments if pagination is not used but we want virtualization
   const convertedSegments = useMemo(() => {
@@ -94,6 +98,8 @@ export function TranscriptPanel({
           totalCount={totalCount}
           loadedCount={loadedCount}
           onLoadMore={onLoadMore}
+          enableFind={!isRecording}
+          initialSearchQuery={searchQuery}
         />
       </div>
 

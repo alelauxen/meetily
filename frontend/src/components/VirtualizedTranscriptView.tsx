@@ -1,6 +1,8 @@
 'use client';
 
-import { useCallback, useRef, useReducer, startTransition, useEffect, useState, memo } from "react";
+import { useCallback, useRef, useReducer, startTransition, useEffect, useState, memo, useMemo, Fragment } from "react";
+import { ChevronDown, ChevronUp, Search, X } from "lucide-react";
+import { findAll } from "@/lib/text-find";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useAutoScroll } from "@/hooks/useAutoScroll";
 import { useTranscriptStreaming } from "@/hooks/useTranscriptStreaming";
@@ -34,6 +36,18 @@ export interface VirtualizedTranscriptViewProps {
     totalCount?: number;
     loadedCount?: number;
     onLoadMore?: () => void;
+
+    /** Versão personalizada: termo vindo da busca da barra lateral (abre a busca já preenchida). */
+    initialSearchQuery?: string;
+    /** Habilita a busca na transcrição (barra + Ctrl+F). */
+    enableFind?: boolean;
+}
+
+/** Trecho grifado dentro de um segmento. */
+interface SegmentHighlight {
+    start: number;
+    end: number;
+    active: boolean;
 }
 
 // Threshold for enabling virtualization (below this, use simple rendering)
@@ -63,6 +77,33 @@ function cleanStopWords(text: string): string {
     return cleanedText.replace(/\s+/g, ' ').trim();
 }
 
+/** Texto exibido de um segmento (a busca precisa usar exatamente o mesmo texto). */
+function segmentDisplayText(text: string): string {
+    return cleanStopWords(text) || (text.trim() === '' ? '[Silence]' : text);
+}
+
+/** Renderiza o texto com os trechos grifados, no estilo do Ctrl+F. */
+function renderHighlighted(text: string, highlights?: SegmentHighlight[]) {
+    if (!highlights || highlights.length === 0) return text;
+    const parts: React.ReactNode[] = [];
+    let last = 0;
+    highlights.forEach((h, i) => {
+        if (h.start > last) parts.push(<Fragment key={`t${i}`}>{text.slice(last, h.start)}</Fragment>);
+        parts.push(
+            <mark
+                key={`m${i}`}
+                data-find-active={h.active ? 'true' : undefined}
+                className={h.active ? 'bg-orange-400 text-gray-900 rounded-sm' : 'bg-yellow-200 text-gray-900 rounded-sm'}
+            >
+                {text.slice(h.start, h.end)}
+            </mark>
+        );
+        last = h.end;
+    });
+    if (last < text.length) parts.push(<Fragment key="end">{text.slice(last)}</Fragment>);
+    return parts;
+}
+
 // Memoized transcript segment component
 const TranscriptSegment = memo(function TranscriptSegment({
     id,
@@ -71,6 +112,7 @@ const TranscriptSegment = memo(function TranscriptSegment({
     confidence,
     isStreaming,
     showConfidence,
+    highlights,
 }: {
     id: string;
     timestamp: number;
@@ -78,8 +120,10 @@ const TranscriptSegment = memo(function TranscriptSegment({
     confidence?: number;
     isStreaming: boolean;
     showConfidence: boolean;
+    highlights?: SegmentHighlight[];
 }) {
-    const displayText = cleanStopWords(text) || (text.trim() === '' ? '[Silence]' : text);
+    const displayText = segmentDisplayText(text);
+    const content = renderHighlighted(displayText, highlights);
 
     return (
         <div id={`segment-${id}`} className="mb-3">
@@ -99,10 +143,10 @@ const TranscriptSegment = memo(function TranscriptSegment({
                 <div className="flex-1">
                     {isStreaming ? (
                         <div className="bg-gray-100 border border-gray-200 rounded-lg px-3 py-2">
-                            <p className="text-base text-gray-800 leading-relaxed">{displayText}</p>
+                            <p className="text-base text-gray-800 leading-relaxed">{content}</p>
                         </div>
                     ) : (
-                        <p className="text-base text-gray-800 leading-relaxed">{displayText}</p>
+                        <p className="text-base text-gray-800 leading-relaxed">{content}</p>
                     )}
                 </div>
             </div>
@@ -124,6 +168,8 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
     totalCount = 0,
     loadedCount = 0,
     onLoadMore,
+    initialSearchQuery = '',
+    enableFind = false,
 }) => {
     // Create scroll ref first - shared between virtualizer and auto-scroll hook
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -223,8 +269,145 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
     // Use simple rendering for small lists, virtualization for large lists
     const useVirtualization = segments.length >= VIRTUALIZATION_THRESHOLD;
 
+    // ------------------------------------------------------------------
+    // Busca na transcrição (versão personalizada), no estilo do Ctrl+F
+    // ------------------------------------------------------------------
+    const [findOpen, setFindOpen] = useState(false);
+    const [findQuery, setFindQuery] = useState('');
+    const [currentMatch, setCurrentMatch] = useState(0);
+    const findInputRef = useRef<HTMLInputElement>(null);
+
+    // Termo vindo da barra lateral: abre a busca já preenchida
+    useEffect(() => {
+        if (!enableFind) return;
+        const q = initialSearchQuery.trim();
+        if (q) {
+            setFindQuery(q);
+            setFindOpen(true);
+            setCurrentMatch(0);
+        }
+    }, [initialSearchQuery, enableFind]);
+
+    // Ctrl+F abre a busca; Esc fecha
+    useEffect(() => {
+        if (!enableFind) return;
+        const onKey = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+                e.preventDefault();
+                setFindOpen(true);
+                setTimeout(() => {
+                    findInputRef.current?.focus();
+                    findInputRef.current?.select();
+                }, 0);
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [enableFind]);
+
+    const activeQuery = findOpen ? findQuery.trim() : '';
+
+    // Todas as ocorrências, na ordem da transcrição
+    const matches = useMemo(() => {
+        if (!activeQuery) return [] as Array<{ seg: number; start: number; end: number }>;
+        const out: Array<{ seg: number; start: number; end: number }> = [];
+        segments.forEach((segment, seg) => {
+            for (const [start, end] of findAll(segmentDisplayText(segment.text), activeQuery)) {
+                out.push({ seg, start, end });
+            }
+        });
+        return out;
+    }, [segments, activeQuery]);
+
+    const safeCurrent = matches.length ? Math.min(currentMatch, matches.length - 1) : 0;
+
+    // Grifos por segmento
+    const highlightsBySegment = useMemo(() => {
+        const map = new Map<number, SegmentHighlight[]>();
+        matches.forEach((m, i) => {
+            const list = map.get(m.seg) || [];
+            list.push({ start: m.start, end: m.end, active: i === safeCurrent });
+            map.set(m.seg, list);
+        });
+        return map;
+    }, [matches, safeCurrent]);
+
+    // Com a busca aberta, carrega o restante da transcrição para achar tudo
+    useEffect(() => {
+        if (activeQuery && hasMore && !isLoadingMore && onLoadMore && !isRecording) {
+            onLoadMore();
+        }
+    }, [activeQuery, hasMore, isLoadingMore, onLoadMore, isRecording]);
+
+    // Rola até a ocorrência atual
+    const current = matches[safeCurrent];
+    const currentKey = current ? `${current.seg}:${current.start}` : '';
+    useEffect(() => {
+        if (!current) return;
+        const segment = segments[current.seg];
+        if (!segment) return;
+        if (useVirtualization) {
+            virtualizer.scrollToIndex(current.seg, { align: 'center' });
+        }
+        // Ajuste fino depois que o segmento é desenhado
+        const t = setTimeout(() => {
+            const el = scrollRef.current?.querySelector('mark[data-find-active="true"]')
+                || document.getElementById(`segment-${segment.id}`);
+            el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }, 80);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentKey]);
+
+    const goTo = (delta: number) => {
+        if (!matches.length) return;
+        setCurrentMatch(i => (Math.min(i, matches.length - 1) + delta + matches.length) % matches.length);
+    };
+    const closeFind = () => {
+        setFindOpen(false);
+        setCurrentMatch(0);
+    };
+
     return (
         <div ref={scrollRef} className="flex flex-col h-full overflow-y-auto px-4 py-2">
+            {/* Barra de busca na transcrição */}
+            {enableFind && findOpen && (
+                <div className="sticky top-0 z-20 -mx-4 mb-2 flex items-center gap-2 border-b border-gray-200 bg-white px-4 py-2 shadow-sm">
+                    <Search className="h-4 w-4 flex-shrink-0 text-gray-400" />
+                    <input
+                        ref={findInputRef}
+                        autoFocus
+                        value={findQuery}
+                        onChange={e => { setFindQuery(e.target.value); setCurrentMatch(0); }}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter') { e.preventDefault(); goTo(e.shiftKey ? -1 : 1); }
+                            if (e.key === 'Escape') { e.preventDefault(); closeFind(); }
+                        }}
+                        placeholder="Buscar na transcrição"
+                        className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
+                    />
+                    <span className="flex-shrink-0 text-xs tabular-nums text-gray-500">
+                        {activeQuery
+                            ? (matches.length ? `${safeCurrent + 1} de ${matches.length}` : 'Nenhum resultado')
+                            : ''}
+                        {activeQuery && hasMore ? ' (carregando…)' : ''}
+                    </span>
+                    <button type="button" title="Anterior (Shift+Enter)" onClick={() => goTo(-1)}
+                        disabled={!matches.length}
+                        className="rounded p-1 text-gray-600 hover:bg-gray-100 disabled:opacity-40">
+                        <ChevronUp className="h-4 w-4" />
+                    </button>
+                    <button type="button" title="Próximo (Enter)" onClick={() => goTo(1)}
+                        disabled={!matches.length}
+                        className="rounded p-1 text-gray-600 hover:bg-gray-100 disabled:opacity-40">
+                        <ChevronDown className="h-4 w-4" />
+                    </button>
+                    <button type="button" title="Fechar (Esc)" onClick={closeFind}
+                        className="rounded p-1 text-gray-600 hover:bg-gray-100">
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+            )}
             {/* Recording Status Bar - Sticky at top, always visible when recording */}
             <AnimatePresence>
                 {isRecording && (
@@ -296,6 +479,7 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                                         confidence={segment.confidence}
                                         isStreaming={isStreaming}
                                         showConfidence={showConfidence}
+                                        highlights={highlightsBySegment.get(virtualRow.index)}
                                     />
                                 </div>
                             );
@@ -335,7 +519,7 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                 // Simple rendering for small lists (better animations)
                 <>
                     <div className="space-y-1">
-                        {segments.map((segment) => {
+                        {segments.map((segment, segIndex) => {
                             const isStreaming = streamingSegmentId === segment.id;
 
                             return (
@@ -352,6 +536,7 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                                         confidence={segment.confidence}
                                         isStreaming={isStreaming}
                                         showConfidence={showConfidence}
+                                        highlights={highlightsBySegment.get(segIndex)}
                                     />
                                 </motion.div>
                             );
