@@ -736,6 +736,8 @@ pub fn run() {
             api::debug_backend_connection,
             api::open_external_url,
             api::open_exported_file,
+            api::check_custom_update,
+            api::get_custom_build_number,
             // Custom OpenAI commands
             api::api_save_custom_openai_config,
             api::api_get_custom_openai_config,

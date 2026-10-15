@@ -1186,6 +1186,100 @@ pub async fn open_exported_file(path: String) -> Result<(), String> {
     result.map_err(|e| format!("Falha ao abrir o arquivo: {}", e))
 }
 
+// ===== ATUALIZAÇÕES DA VERSÃO PERSONALIZADA (alelauxen/meetily) =====
+
+const CUSTOM_RELEASES_API: &str = "https://api.github.com/repos/alelauxen/meetily/releases/latest";
+const CUSTOM_RELEASES_PAGE: &str = "https://github.com/alelauxen/meetily/releases/latest";
+
+/// Resultado da verificação de atualização da versão personalizada.
+#[derive(Debug, Serialize)]
+pub struct CustomUpdateInfo {
+    pub current_build: Option<u32>,
+    pub latest_build: Option<u32>,
+    pub latest_name: String,
+    pub release_url: String,
+    pub update_available: bool,
+}
+
+/// Extrai o número do build de tags como `pt-v0.4.1-build5`.
+fn build_from_tag(tag: &str) -> Option<u32> {
+    let idx = tag.rfind("build")?;
+    tag[idx + "build".len()..].trim().parse().ok()
+}
+
+/// Número do build gravado durante a compilação (workflow do GitHub).
+#[tauri::command]
+pub fn get_custom_build_number() -> Option<u32> {
+    option_env!("MEETILY_PT_BUILD").and_then(|s| s.trim().parse().ok())
+}
+
+/// Consulta a última versão publicada em github.com/alelauxen/meetily/releases.
+#[tauri::command]
+pub async fn check_custom_update() -> Result<CustomUpdateInfo, String> {
+    let current_build = get_custom_build_number();
+
+    let client = reqwest::Client::builder()
+        .user_agent("Meetily-PT")
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Falha ao preparar a verificação: {}", e))?;
+
+    let response = client
+        .get(CUSTOM_RELEASES_API)
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|e| format!("Sem conexão com o GitHub: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("O GitHub respondeu com o código {}", response.status()));
+    }
+
+    let release: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Resposta inesperada do GitHub: {}", e))?;
+
+    let tag = release["tag_name"].as_str().unwrap_or_default().to_string();
+    let latest_build = build_from_tag(&tag);
+    let release_url = release["html_url"]
+        .as_str()
+        .unwrap_or(CUSTOM_RELEASES_PAGE)
+        .to_string();
+    let latest_name = release["name"].as_str().unwrap_or(tag.as_str()).to_string();
+
+    let update_available = match (current_build, latest_build) {
+        (Some(current), Some(latest)) => latest > current,
+        _ => false,
+    };
+
+    log_info!(
+        "Verificação de atualização: build atual {:?}, último publicado {:?}",
+        current_build,
+        latest_build
+    );
+
+    Ok(CustomUpdateInfo {
+        current_build,
+        latest_build,
+        latest_name,
+        release_url,
+        update_available,
+    })
+}
+
+#[cfg(test)]
+mod custom_update_tests {
+    use super::build_from_tag;
+
+    #[test]
+    fn parses_build_number_from_tag() {
+        assert_eq!(build_from_tag("pt-v0.4.1-build5"), Some(5));
+        assert_eq!(build_from_tag("pt-v0.4.1-build12"), Some(12));
+        assert_eq!(build_from_tag("v0.4.1"), None);
+    }
+}
+
 // ===== CUSTOM OPENAI API COMMANDS =====
 
 /// Saves the custom OpenAI configuration

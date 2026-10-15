@@ -680,6 +680,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Número do build gravado no app (usado em "Check for Updates")
+          MEETILY_PT_BUILD: ${{ github.run_number }}
           # Tauri updater signing (ALWAYS enabled for .sig files)
           # License validation RSA public key (embedded at build time)
           MEETILY_RSA_PUBLIC_KEY: ${{ secrets.MEETILY_RSA_PUBLIC_KEY }}

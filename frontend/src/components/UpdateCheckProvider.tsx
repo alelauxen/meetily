@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 import { useUpdateCheck } from '@/hooks/useUpdateCheck';
 import { UpdateInfo } from '@/services/updateService';
 import { UpdateDialog } from './UpdateDialog';
+import { checkCustomUpdateWithToast } from '@/services/customUpdate';
 import { setUpdateDialogCallback, showUpdateNotification } from './UpdateNotification';
 
 interface UpdateCheckContextType {
@@ -41,9 +42,9 @@ export function UpdateCheckProvider({ children }: { children: React.ReactNode })
 
   // Listen for tray menu events
   useEffect(() => {
+    // Versão personalizada: o menu da bandeja consulta github.com/alelauxen/meetily
     const handleTrayCheck = () => {
-      checkForUpdates(true); // Force check from tray
-      setShowDialog(true);
+      checkCustomUpdateWithToast();
     };
 
     window.addEventListener('check-updates-from-tray', handleTrayCheck);
