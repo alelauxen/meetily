@@ -558,6 +558,8 @@ impl WhisperEngine {
         let adaptive_config = hardware_profile.get_whisper_config();
 
         // ADAPTIVE parameters - optimized for current hardware
+        // Versão personalizada: glossário como texto inicial (ajuda com termos técnicos)
+        let glossary_prompt = crate::glossary::whisper_prompt();
         let mut params = FullParams::new(SamplingStrategy::BeamSearch {
             beam_size: adaptive_config.beam_size as i32,
             patience: 1.0
@@ -574,6 +576,9 @@ impl WhisperEngine {
         };
         params.set_language(language_code);
         params.set_translate(should_translate);
+        if let Some(prompt) = glossary_prompt.as_deref() {
+            params.set_initial_prompt(prompt);
+        }
 
         // CRITICAL: Disable timestamp tokens to prevent whisper.cpp chunking heuristics
         // The "single timestamp ending - skip entire chunk" optimization incorrectly discards
@@ -675,6 +680,8 @@ impl WhisperEngine {
         let adaptive_config = hardware_profile.get_whisper_config();
 
         // ADAPTIVE parameters - optimized for current hardware
+        // Versão personalizada: glossário como texto inicial (ajuda com termos técnicos)
+        let glossary_prompt = crate::glossary::whisper_prompt();
         let mut params = FullParams::new(SamplingStrategy::BeamSearch {
             beam_size: adaptive_config.beam_size as i32,
             patience: 1.0
@@ -691,6 +698,9 @@ impl WhisperEngine {
         };
         params.set_language(language_code);
         params.set_translate(should_translate);
+        if let Some(prompt) = glossary_prompt.as_deref() {
+            params.set_initial_prompt(prompt);
+        }
 
         // CRITICAL: Disable timestamp tokens to prevent whisper.cpp chunking heuristics
         // The "single timestamp ending - skip entire chunk" optimization incorrectly discards

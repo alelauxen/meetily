@@ -502,6 +502,12 @@ pub(crate) async fn generate_meeting_summary(
                 final_user_prompt.push_str(custom_prompt);
                 final_user_prompt.push_str("\n</user_context>");
             }
+            // Versão personalizada: glossário com a grafia correta dos termos
+            if let Some(glossary) = crate::glossary::summary_context() {
+                final_user_prompt.push_str("\n\n<glossary>\n");
+                final_user_prompt.push_str(&glossary);
+                final_user_prompt.push_str("</glossary>");
+            }
             let completion = generate_summary(
                 client, provider, model_name, api_key, &final_system_prompt, &final_user_prompt,
                 ollama_endpoint, custom_openai_endpoint, max_tokens, temperature, top_p,

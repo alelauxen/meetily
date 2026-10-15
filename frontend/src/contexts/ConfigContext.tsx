@@ -5,6 +5,9 @@ import { TranscriptModelProps } from '@/components/TranscriptSettings';
 import { SelectedDevices } from '@/components/DeviceSelection';
 import { configService, ModelConfig } from '@/services/configService';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+import { toast } from 'sonner';
+import { DEFAULT_WHISPER_MODEL } from '@/constants/modelDefaults';
 import Analytics from '@/lib/analytics';
 import { BetaFeatures, BetaFeatureKey, loadBetaFeatures, saveBetaFeatures } from '@/types/betaFeatures';
 
@@ -485,6 +488,96 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     invoke('set_language_preference', { language: lang }).catch(err =>
       console.error('Failed to sync language preference to Rust:', err)
     );
+  }, []);
+
+  // ------------------------------------------------------------------
+  // Versão personalizada: padrões em português
+  //  - idioma da transcrição fixo em Português
+  //  - modelo Whisper Large V3 Turbo (baixa em segundo plano se faltar;
+  //    só troca quando o download termina, para a transcrição nunca parar)
+  // Roda uma única vez por computador, inclusive para quem atualizou o app.
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    const LANG_FLAG = 'pt_defaults_lang_v1';
+    const MODEL_FLAG = 'pt_defaults_model_v1';
+    const read = (k: string) => { try { return localStorage.getItem(k); } catch { return '1'; } };
+    const mark = (k: string) => { try { localStorage.setItem(k, '1'); } catch { /* ignore */ } };
+
+    if (!read(LANG_FLAG)) {
+      handleSetSelectedLanguage('pt');
+      mark(LANG_FLAG);
+    }
+    if (read(MODEL_FLAG)) return;
+
+    let cancelled = false;
+    let done = false;
+    let unlisten: (() => void) | undefined;
+
+    const selectTurbo = async () => {
+      if (done || cancelled) return;
+      done = true;
+      await invoke('api_save_transcript_config', {
+        provider: 'localWhisper',
+        model: DEFAULT_WHISPER_MODEL,
+        apiKey: null,
+      });
+      setTranscriptModelConfig({ provider: 'localWhisper', model: DEFAULT_WHISPER_MODEL, apiKey: null });
+      mark(MODEL_FLAG);
+      toast.success('Transcrição configurada: Whisper Large V3 Turbo em português');
+    };
+
+    const run = async () => {
+      // Espera a configuração inicial do app terminar (tenta de novo na próxima abertura)
+      const onboarding = await invoke<{ completed?: boolean } | null>('get_onboarding_status').catch(() => null);
+      if (!onboarding?.completed || cancelled) return;
+
+      const current = await configService.getTranscriptConfig().catch(() => null);
+      if (current?.provider === 'localWhisper' && current?.model === DEFAULT_WHISPER_MODEL) {
+        mark(MODEL_FLAG);
+        return;
+      }
+
+      await invoke('whisper_init');
+      const models = await invoke<Array<{ name: string; status: unknown }>>('whisper_get_available_models');
+      const turbo = models.find(m => m.name === DEFAULT_WHISPER_MODEL);
+      if (turbo?.status === 'Available') {
+        await selectTurbo();
+        return;
+      }
+
+      unlisten = await listen<{ modelName: string }>('model-download-complete', event => {
+        if (event.payload.modelName === DEFAULT_WHISPER_MODEL) {
+          selectTurbo().catch(err => console.error('[pt-defaults] Falha ao selecionar modelo:', err));
+        }
+      });
+
+      const status = turbo?.status;
+      const isDownloading = status !== null && typeof status === 'object' && 'Downloading' in (status as object);
+      if (!isDownloading && !cancelled) {
+        toast.info('Baixando o modelo de transcrição Whisper Large V3 Turbo (cerca de 1,6 GB)', {
+          description: 'Até terminar, a transcrição continua com o modelo atual.',
+          duration: 10000,
+        });
+        await invoke('whisper_download_model', { modelName: DEFAULT_WHISPER_MODEL });
+        // Alguns fluxos só retornam quando o download termina
+        const after = await invoke<Array<{ name: string; status: unknown }>>('whisper_get_available_models').catch(() => []);
+        if (after.find(m => m.name === DEFAULT_WHISPER_MODEL)?.status === 'Available') {
+          await selectTurbo();
+        }
+      }
+    };
+
+    const timer = setTimeout(() => {
+      run().catch(err => console.error('[pt-defaults] Falha ao aplicar padrões:', err));
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      unlisten?.();
+    };
+    // Roda só na abertura do app
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const value: ConfigContextType = useMemo(() => ({

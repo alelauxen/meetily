@@ -41,6 +41,7 @@ pub mod audio;
 pub mod config;
 pub mod console_utils;
 pub mod database;
+pub mod glossary;
 pub mod notifications;
 pub mod ollama;
 pub mod onboarding;
@@ -738,6 +739,8 @@ pub fn run() {
             api::open_exported_file,
             api::check_custom_update,
             api::get_custom_build_number,
+            glossary::glossary_get,
+            glossary::glossary_set,
             // Custom OpenAI commands
             api::api_save_custom_openai_config,
             api::api_get_custom_openai_config,

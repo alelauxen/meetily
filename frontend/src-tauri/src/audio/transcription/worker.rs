@@ -205,6 +205,8 @@ pub fn start_transcription_task<R: Runtime>(
 
                                         // Emit transcript update with NEW recording-relative timestamps
 
+                                        // Versão personalizada: correções do glossário + origem da fala
+                                        let transcript = crate::glossary::apply_replacements(&transcript);
                                         let text = match source_label {
                                             Some(label) => format!("[{}] {}", label, transcript.trim()),
                                             None => transcript,
