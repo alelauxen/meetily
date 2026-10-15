@@ -1164,6 +1164,28 @@ pub async fn open_external_url(url: String) -> Result<(), String> {
     }
 }
 
+/// Abre o arquivo exportado (ata em Word) no programa padrão do sistema.
+#[tauri::command]
+pub async fn open_exported_file(path: String) -> Result<(), String> {
+    use std::process::Command;
+
+    let p = std::path::Path::new(&path);
+    if !p.is_file() {
+        return Err(format!("Arquivo não encontrado: {}", path));
+    }
+
+    let result = if cfg!(target_os = "windows") {
+        // `explorer <arquivo>` abre no programa associado (Word), lidando com espaços no caminho
+        Command::new("explorer").arg(&path).spawn().map(|_| ())
+    } else if cfg!(target_os = "macos") {
+        Command::new("open").arg(&path).spawn().map(|_| ())
+    } else {
+        Command::new("xdg-open").arg(&path).spawn().map(|_| ())
+    };
+
+    result.map_err(|e| format!("Falha ao abrir o arquivo: {}", e))
+}
+
 // ===== CUSTOM OPENAI API COMMANDS =====
 
 /// Saves the custom OpenAI configuration

@@ -9,6 +9,8 @@ import { check, Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { getVersion } from '@tauri-apps/api/app';
 
+const UPDATES_DISABLED = true;
+
 export interface UpdateInfo {
   available: boolean;
   currentVersion: string;
@@ -54,6 +56,12 @@ export class UpdateService {
           currentVersion: await getVersion(),
         };
       }
+    }
+
+    // Versão personalizada (fork alelauxen/meetily): atualização automática desativada
+    // para que a versão oficial não sobrescreva as melhorias locais.
+    if (UPDATES_DISABLED) {
+      return { available: false, currentVersion: await getVersion() };
     }
 
     this.updateCheckInProgress = true;

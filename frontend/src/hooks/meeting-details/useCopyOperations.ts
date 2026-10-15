@@ -105,6 +105,53 @@ export function useCopyOperations({
     });
   }, [meeting, meetingTitle, fetchAllTranscripts]);
 
+  // Obtém o Markdown do resumo (editor -> markdown salvo -> formato antigo)
+  const getSummaryMarkdown = useCallback(async (): Promise<string> => {
+    let summaryMarkdown = '';
+
+    console.log('🔍 Copy Summary - Starting...');
+
+    // Try to get markdown from BlockNote editor first
+    if (blockNoteSummaryRef.current?.getMarkdown) {
+      console.log('📝 Trying to get markdown from ref...');
+      summaryMarkdown = await blockNoteSummaryRef.current.getMarkdown();
+      console.log('📝 Got markdown from ref, length:', summaryMarkdown.length);
+    }
+
+    // Fallback: Check if aiSummary has markdown property
+    if (!summaryMarkdown && aiSummary && typeof aiSummary.markdown === 'string') {
+      console.log('📝 Using markdown from aiSummary');
+      summaryMarkdown = aiSummary.markdown;
+      console.log('📝 Markdown from aiSummary, length:', summaryMarkdown.length);
+    }
+
+    // Fallback: Check for legacy format
+    if (!summaryMarkdown && aiSummary) {
+      console.log('📝 Converting legacy format to markdown');
+      const sections = Object.entries(aiSummary)
+        .filter(([key]) => {
+          // Skip non-section keys
+          return key !== 'markdown' && key !== 'summary_json' && key !== '_section_order' && key !== 'MeetingName';
+        })
+        .map(([, section]) => {
+          if (section && typeof section === 'object' && 'title' in section && 'blocks' in section) {
+            const sectionTitle = `## ${section.title}\n\n`;
+            const sectionContent = section.blocks
+              .map((block: any) => `- ${block.content}`)
+              .join('\n');
+            return sectionTitle + sectionContent;
+          }
+          return '';
+        })
+        .filter(s => s.trim())
+        .join('\n\n');
+      summaryMarkdown = sections;
+      console.log('📝 Converted legacy format, length:', summaryMarkdown.length);
+    }
+
+    return summaryMarkdown;
+  }, [aiSummary, blockNoteSummaryRef]);
+
   // Copy summary to clipboard
   const handleCopySummary = useCallback(async () => {
     if (!hasVisibleSummaryContent(aiSummary)) {
@@ -112,47 +159,7 @@ export function useCopyOperations({
       return;
     }
     try {
-      let summaryMarkdown = '';
-
-      console.log('🔍 Copy Summary - Starting...');
-
-      // Try to get markdown from BlockNote editor first
-      if (blockNoteSummaryRef.current?.getMarkdown) {
-        console.log('📝 Trying to get markdown from ref...');
-        summaryMarkdown = await blockNoteSummaryRef.current.getMarkdown();
-        console.log('📝 Got markdown from ref, length:', summaryMarkdown.length);
-      }
-
-      // Fallback: Check if aiSummary has markdown property
-      if (!summaryMarkdown && aiSummary && typeof aiSummary.markdown === 'string') {
-        console.log('📝 Using markdown from aiSummary');
-        summaryMarkdown = aiSummary.markdown;
-        console.log('📝 Markdown from aiSummary, length:', summaryMarkdown.length);
-      }
-
-      // Fallback: Check for legacy format
-      if (!summaryMarkdown && aiSummary) {
-        console.log('📝 Converting legacy format to markdown');
-        const sections = Object.entries(aiSummary)
-          .filter(([key]) => {
-            // Skip non-section keys
-            return key !== 'markdown' && key !== 'summary_json' && key !== '_section_order' && key !== 'MeetingName';
-          })
-          .map(([, section]) => {
-            if (section && typeof section === 'object' && 'title' in section && 'blocks' in section) {
-              const sectionTitle = `## ${section.title}\n\n`;
-              const sectionContent = section.blocks
-                .map((block: any) => `- ${block.content}`)
-                .join('\n');
-              return sectionTitle + sectionContent;
-            }
-            return '';
-          })
-          .filter(s => s.trim())
-          .join('\n\n');
-        summaryMarkdown = sections;
-        console.log('📝 Converted legacy format, length:', summaryMarkdown.length);
-      }
+      const summaryMarkdown = await getSummaryMarkdown();
 
       // If still no summary content, show message
       if (!summaryMarkdown.trim()) {
@@ -192,10 +199,11 @@ export function useCopyOperations({
       console.error('❌ Failed to copy summary:', error);
       toast.error("Failed to copy summary");
     }
-  }, [aiSummary, meetingTitle, meeting, blockNoteSummaryRef]);
+  }, [aiSummary, meetingTitle, meeting, getSummaryMarkdown]);
 
   return {
     handleCopyTranscript,
     handleCopySummary,
+    getSummaryMarkdown,
   };
 }

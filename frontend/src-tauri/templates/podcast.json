@@ -1,0 +1,36 @@
+{
+  "name": "Podcast",
+  "description": "Resumo de episódio de podcast ou entrevista em português, com temas, ideias, citações e referências.",
+  "sections": [
+    {
+      "title": "Identificação",
+      "instruction": "Escreva em português do Brasil. Informe o nome do podcast, o episódio, os apresentadores e os convidados, se mencionados. Ignore os rótulos [Local] e [Remoto] que aparecem no início de alguns trechos da transcrição",
+      "format": "list"
+    },
+    {
+      "title": "Resumo do Episódio",
+      "instruction": "Resuma em um a dois parágrafos o tema central e a conclusão do episódio",
+      "format": "paragraph"
+    },
+    {
+      "title": "Temas Discutidos",
+      "instruction": "Liste os temas na ordem em que foram tratados, cada um com um resumo curto do que foi dito",
+      "format": "list"
+    },
+    {
+      "title": "Principais Ideias",
+      "instruction": "Liste as ideias, opiniões e aprendizados mais relevantes, indicando quem os defendeu",
+      "format": "list"
+    },
+    {
+      "title": "Citações Marcantes",
+      "instruction": "Transcreva de 2 a 5 frases marcantes ditas no episódio, entre aspas, com o nome de quem falou e o tempo aproximado",
+      "format": "list"
+    },
+    {
+      "title": "Referências Citadas",
+      "instruction": "Liste livros, pessoas, empresas, sites, estudos ou produtos mencionados. Se não houve, escreva 'Nenhuma'",
+      "format": "list"
+    }
+  ]
+}

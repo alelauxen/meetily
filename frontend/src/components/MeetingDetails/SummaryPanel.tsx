@@ -34,6 +34,7 @@ interface SummaryPanelProps {
   isSaving: boolean;
   onSaveAll: () => Promise<void>;
   onCopySummary: () => Promise<void>;
+  onGetSummaryMarkdown?: () => Promise<string>;
   aiSummary: MeetingSummary | null;
   summaryStatus: 'idle' | 'processing' | 'summarizing' | 'regenerating' | 'completed' | 'error';
   transcripts: Transcript[];
@@ -64,6 +65,7 @@ export function SummaryPanel({
   isSaving,
   onSaveAll,
   onCopySummary,
+  onGetSummaryMarkdown,
   aiSummary,
   summaryStatus,
   transcripts,
@@ -273,6 +275,9 @@ export function SummaryPanel({
                 isDirty={isSummaryDirty}
                 onSave={onSaveAll}
                 onCopy={onCopySummary}
+                getMarkdown={onGetSummaryMarkdown}
+                meetingTitle={meetingTitle || meeting.title}
+                meetingDate={meeting.created_at}
               />
             </div>
           )}

@@ -1,0 +1,47 @@
+{
+  "name": "Sessão de RPG",
+  "description": "Diário de sessão de RPG em português, com acontecimentos, personagens, decisões e ganchos.",
+  "sections": [
+    {
+      "title": "Identificação",
+      "instruction": "Escreva em português do Brasil. Informe o nome da campanha, o sistema de jogo, o número da sessão, o mestre e os jogadores com seus personagens, se mencionados. Ignore conversas fora do jogo. Ignore os rótulos [Local] e [Remoto] que aparecem no início de alguns trechos da transcrição",
+      "format": "list"
+    },
+    {
+      "title": "Resumo da Sessão",
+      "instruction": "Narre em dois a três parágrafos, em estilo de crônica e no passado, o que aconteceu na história durante a sessão. Ignore regras, rolagens de dado e conversas paralelas",
+      "format": "paragraph"
+    },
+    {
+      "title": "Acontecimentos Principais",
+      "instruction": "Liste em ordem cronológica os eventos mais importantes da sessão: combates, descobertas, viagens, reviravoltas",
+      "format": "list"
+    },
+    {
+      "title": "Personagens e NPCs",
+      "instruction": "Liste os personagens não jogadores (NPCs) que apareceram ou foram citados, com uma breve descrição e sua relação com o grupo",
+      "format": "list",
+      "item_format": "| Nome | Quem é | Relação com o grupo |\n| --- | --- | --- |"
+    },
+    {
+      "title": "Decisões do Grupo",
+      "instruction": "Liste as escolhas importantes que os jogadores fizeram e suas consequências imediatas",
+      "format": "list"
+    },
+    {
+      "title": "Itens, Recompensas e Pistas",
+      "instruction": "Liste itens obtidos, tesouros, experiência, informações e pistas descobertas. Se não houve, escreva 'Nenhum'",
+      "format": "list"
+    },
+    {
+      "title": "Ganchos e Pendências",
+      "instruction": "Liste mistérios não resolvidos, missões em aberto e o ponto em que a história parou, para a próxima sessão",
+      "format": "list"
+    },
+    {
+      "title": "Momentos Marcantes",
+      "instruction": "Liste de 1 a 3 momentos memoráveis ou engraçados da sessão, com a fala ou ação que os marcou",
+      "format": "list"
+    }
+  ]
+}

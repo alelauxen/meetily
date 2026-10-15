@@ -12,6 +12,7 @@ use super::devices::AudioDevice;
 use super::recording_state::{AudioChunk, AudioError, RecordingState, DeviceType};
 use super::audio_processing::{audio_to_mono, LoudnessNormalizer, NoiseSuppressionProcessor, HighPassFilter};
 use super::vad::{ContinuousVadProcessor};
+use super::speaker_source::{self, SourceTracker};
 
 /// How long a silence must last before the VAD closes a speech segment, and
 /// therefore how long the audio clips handed to the ASR engine are.
@@ -707,6 +708,8 @@ pub struct AudioPipeline {
     mixer: ProfessionalAudioMixer,
     // Recording sender for pre-mixed audio
     recording_sender_for_mixed: Option<mpsc::UnboundedSender<AudioChunk>>,
+    // Versão personalizada: origem aproximada da fala (Local x Remoto)
+    source_tracker: SourceTracker,
 }
 
 impl AudioPipeline {
@@ -765,6 +768,8 @@ impl AudioPipeline {
         // Initialize professional audio mixing components
         let ring_buffer = AudioMixerRingBuffer::new(sample_rate);
         let mixer = ProfessionalAudioMixer::new(sample_rate);
+        let source_tracker = SourceTracker::new(sample_rate);
+        speaker_source::clear_labels();
 
         // Note: target_chunk_duration_ms is ignored - VAD controls segmentation now
         let _ = target_chunk_duration_ms;
@@ -785,6 +790,7 @@ impl AudioPipeline {
             ring_buffer,
             mixer,
             recording_sender_for_mixed: None,  // Will be set by manager
+            source_tracker,
         })
     }
 
@@ -847,6 +853,9 @@ impl AudioPipeline {
                     // STEP 2: Mix audio in fixed windows when both streams have sufficient data
                     while self.ring_buffer.can_mix() {
                         if let Some((mic_window, sys_window)) = self.ring_buffer.extract_window() {
+                            // Registra a energia de cada fonte para rotular os trechos de fala
+                            self.source_tracker.record_window(&mic_window, &sys_window);
+
                             // Simple mixing without aggressive ducking
                             let mixed_clean = self.mixer.mix_window(&mic_window, &sys_window);
 
@@ -866,6 +875,14 @@ impl AudioPipeline {
                                             info!("📤 Sending VAD segment: {:.1}ms, {} samples",
                                                   duration_ms, segment.samples.len());
 
+                                            let label = self.source_tracker.classify(
+                                                segment.start_timestamp_ms,
+                                                segment.end_timestamp_ms,
+                                            );
+                                            if let Some(label) = label {
+                                                speaker_source::set_chunk_label(self.chunk_id_counter, label);
+                                            }
+
                                             let transcription_chunk = AudioChunk {
                                                 data: segment.samples,
                                                 sample_rate: 16000,
@@ -876,6 +893,7 @@ impl AudioPipeline {
 
                                             if let Err(e) = self.transcription_sender.send(transcription_chunk) {
                                                 warn!("Failed to send VAD segment: {}", e);
+                                                let _ = speaker_source::take_chunk_label(self.chunk_id_counter);
                                             } else {
                                                 self.chunk_id_counter += 1;
                                             }
@@ -936,6 +954,13 @@ impl AudioPipeline {
                         info!("📤 Sending final VAD segment to Whisper: {:.1}ms duration, {} samples",
                               duration_ms, segment.samples.len());
 
+                        if let Some(label) = self.source_tracker.classify(
+                            segment.start_timestamp_ms,
+                            segment.end_timestamp_ms,
+                        ) {
+                            speaker_source::set_chunk_label(self.chunk_id_counter, label);
+                        }
+
                         let transcription_chunk = AudioChunk {
                             data: segment.samples,
                             sample_rate: 16000,
@@ -946,6 +971,7 @@ impl AudioPipeline {
 
                         if let Err(e) = self.transcription_sender.send(transcription_chunk) {
                             warn!("Failed to send final VAD segment: {}", e);
+                            let _ = speaker_source::take_chunk_label(self.chunk_id_counter);
                         } else {
                             self.chunk_id_counter += 1;
                         }

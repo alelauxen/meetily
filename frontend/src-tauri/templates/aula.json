@@ -1,0 +1,47 @@
+{
+  "name": "Aula",
+  "description": "Resumo de aula ou curso em português, com conceitos, exemplos, dúvidas e tarefas.",
+  "sections": [
+    {
+      "title": "Identificação",
+      "instruction": "Escreva em português do Brasil. Informe a disciplina ou curso, o professor e a data, se mencionados. O que não aparecer na transcrição, escreva 'Não informado'. Ignore os rótulos [Local] e [Remoto] que aparecem no início de alguns trechos da transcrição",
+      "format": "list"
+    },
+    {
+      "title": "Resumo da Aula",
+      "instruction": "Faça um resumo de um a dois parágrafos sobre o tema principal da aula e o que foi ensinado",
+      "format": "paragraph"
+    },
+    {
+      "title": "Tópicos Abordados",
+      "instruction": "Liste, na ordem em que apareceram, os tópicos tratados na aula, cada um com uma frase explicando o essencial",
+      "format": "list"
+    },
+    {
+      "title": "Conceitos e Definições",
+      "instruction": "Liste os termos, conceitos, fórmulas ou definições importantes apresentados, com a explicação dada pelo professor",
+      "format": "list",
+      "item_format": "| Conceito | Explicação |\n| --- | --- |"
+    },
+    {
+      "title": "Exemplos Dados",
+      "instruction": "Liste os exemplos práticos, casos ou exercícios resolvidos durante a aula",
+      "format": "list"
+    },
+    {
+      "title": "Dúvidas e Respostas",
+      "instruction": "Liste as perguntas feitas pelos alunos e as respostas dadas. Se não houve perguntas, escreva 'Nenhuma dúvida registrada'",
+      "format": "list"
+    },
+    {
+      "title": "Tarefas e Avisos",
+      "instruction": "Liste trabalhos, leituras, provas, prazos e avisos mencionados. Se não houve, escreva 'Nenhum'",
+      "format": "list"
+    },
+    {
+      "title": "Pontos para Revisar",
+      "instruction": "Liste de 3 a 6 pontos que o aluno deve revisar para fixar o conteúdo, com base no que o professor enfatizou",
+      "format": "list"
+    }
+  ]
+}

@@ -149,6 +149,8 @@ pub fn start_transcription_task<R: Runtime>(
 
                             let chunk_timestamp = chunk.timestamp;
                             let chunk_duration = chunk.data.len() as f64 / chunk.sample_rate as f64;
+                            // Versão personalizada: origem da fala (Local/Remoto), se identificada
+                            let source_label = crate::audio::speaker_source::take_chunk_label(chunk.chunk_id);
 
                             // Transcribe with provider-agnostic approach
                             match transcribe_chunk_with_provider(
@@ -203,8 +205,13 @@ pub fn start_transcription_task<R: Runtime>(
 
                                         // Emit transcript update with NEW recording-relative timestamps
 
+                                        let text = match source_label {
+                                            Some(label) => format!("[{}] {}", label, transcript.trim()),
+                                            None => transcript,
+                                        };
+
                                         let update = TranscriptUpdate {
-                                            text: transcript,
+                                            text,
                                             timestamp: format_current_timestamp(), // Wall-clock for reference
                                             source: "Audio".to_string(),
                                             sequence_id,

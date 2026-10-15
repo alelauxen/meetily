@@ -1,0 +1,47 @@
+{
+  "name": "Ata de Reunião",
+  "description": "Ata formal de reunião em português, com participantes, pauta, deliberações e encaminhamentos.",
+  "sections": [
+    {
+      "title": "Identificação",
+      "instruction": "Escreva em português do Brasil. Informe a data, o horário de início e término (se mencionados na transcrição), o local ou plataforma e o objetivo da reunião. Se alguma informação não aparecer na transcrição, escreva 'Não informado' em vez de inventar",
+      "format": "list"
+    },
+    {
+      "title": "Participantes",
+      "instruction": "Liste os nomes das pessoas que participaram da reunião, com cargo ou setor quando mencionado. Use apenas nomes que aparecem na transcrição; se não for possível identificar, escreva 'Participantes não identificados na gravação'. Na transcrição, trechos iniciados por [Local] foram captados pelo microfone (o usuário e quem está na mesma sala) e trechos iniciados por [Remoto] vieram do áudio do computador (participantes da chamada online); use isso para entender quem falou, mas não copie esses rótulos para o texto",
+      "format": "list"
+    },
+    {
+      "title": "Pauta",
+      "instruction": "Liste, em ordem, os assuntos tratados na reunião, em frases curtas",
+      "format": "list"
+    },
+    {
+      "title": "Discussão",
+      "instruction": "Para cada item da pauta, resuma em linguagem formal e na terceira pessoa o que foi discutido, os principais argumentos e quem os apresentou. Não use transcrição literal. Na transcrição, trechos iniciados por [Local] foram captados pelo microfone (o usuário e quem está na mesma sala) e trechos iniciados por [Remoto] vieram do áudio do computador (participantes da chamada online); use isso para entender quem falou, mas não copie esses rótulos para o texto",
+      "format": "paragraph"
+    },
+    {
+      "title": "Deliberações",
+      "instruction": "Liste todas as decisões tomadas e aprovações feitas durante a reunião. Se nada foi decidido, escreva 'Nenhuma deliberação registrada'",
+      "format": "list"
+    },
+    {
+      "title": "Encaminhamentos",
+      "instruction": "Liste todas as tarefas definidas, com o responsável e o prazo. Se o responsável ou o prazo não foram mencionados, escreva 'A definir'",
+      "format": "list",
+      "item_format": "| Tarefa | Responsável | Prazo |\n| --- | --- | --- |"
+    },
+    {
+      "title": "Próxima Reunião",
+      "instruction": "Informe a data, o horário e os assuntos previstos para a próxima reunião, se foram mencionados. Caso contrário, escreva 'Não definida'",
+      "format": "string"
+    },
+    {
+      "title": "Encerramento",
+      "instruction": "Escreva um parágrafo formal de encerramento no estilo de ata, por exemplo: 'Nada mais havendo a tratar, a reunião foi encerrada, e eu lavrei a presente ata, que após lida e aprovada será assinada pelos presentes.'",
+      "format": "paragraph"
+    }
+  ]
+}

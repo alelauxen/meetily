@@ -1,0 +1,36 @@
+{
+  "name": "Palestra / Apresentação",
+  "description": "Resumo de palestra, apresentação ou webinar em português, com mensagem central, pontos-chave e perguntas.",
+  "sections": [
+    {
+      "title": "Identificação",
+      "instruction": "Escreva em português do Brasil. Informe o título, o palestrante, o evento e a data, se mencionados. O que não aparecer, escreva 'Não informado'. Ignore os rótulos [Local] e [Remoto] que aparecem no início de alguns trechos da transcrição",
+      "format": "list"
+    },
+    {
+      "title": "Mensagem Central",
+      "instruction": "Resuma em um parágrafo a principal mensagem ou tese da apresentação",
+      "format": "paragraph"
+    },
+    {
+      "title": "Pontos-Chave",
+      "instruction": "Liste os principais pontos apresentados, na ordem da apresentação, cada um com uma ou duas frases",
+      "format": "list"
+    },
+    {
+      "title": "Dados e Exemplos",
+      "instruction": "Liste números, estatísticas, casos e exemplos citados pelo palestrante",
+      "format": "list"
+    },
+    {
+      "title": "Perguntas do Público",
+      "instruction": "Liste as perguntas feitas e as respostas dadas. Se não houve, escreva 'Nenhuma pergunta registrada'",
+      "format": "list"
+    },
+    {
+      "title": "Aplicações Práticas",
+      "instruction": "Liste de 3 a 5 formas práticas de aplicar o que foi apresentado, com base no conteúdo da palestra",
+      "format": "list"
+    }
+  ]
+}
