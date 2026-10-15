@@ -451,7 +451,7 @@ impl SidecarManager {
         // Wait for active requests to complete
         // We poll every 500ms
         let start = Instant::now();
-        let max_wait = Duration::from_secs(600); // Wait up to 10 minutes for long generations
+        let max_wait = Duration::from_secs(models_timeout()); // Espera a geração terminar (versão personalizada)
         
         loop {
             let count = self.active_request_count.load(Ordering::SeqCst);
@@ -667,4 +667,10 @@ impl Drop for SidecarManager {
         // We can't do async work in Drop, so this is best-effort
         log::debug!("SidecarManager dropped");
     }
+}
+
+
+/// Tempo máximo de espera por gerações longas antes de encerrar o modelo local.
+fn models_timeout() -> u64 {
+    super::models::GENERATION_TIMEOUT_SECS
 }

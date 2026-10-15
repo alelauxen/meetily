@@ -325,7 +325,9 @@ pub const DEFAULT_MAX_TOKENS: i32 = 4096;
 pub const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 300; // 5 minutes
 
 /// Generation timeout (how long to wait for a response)
-pub const GENERATION_TIMEOUT_SECS: u64 = 900; // 15 minutes
+// Versão personalizada: 24 horas (antes 15 min). Reuniões longas no modelo local
+// em CPU podem levar bem mais que 15 minutos; o usuário pode cancelar pelo app.
+pub const GENERATION_TIMEOUT_SECS: u64 = 24 * 60 * 60;
 
 #[cfg(test)]
 mod tests {

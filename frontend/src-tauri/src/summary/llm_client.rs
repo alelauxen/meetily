@@ -7,6 +7,17 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 const REQUEST_TIMEOUT_DURATION: Duration = Duration::from_secs(300);
+/// Versão personalizada: modelos locais (Ollama) podem levar muito tempo em reuniões longas,
+/// então o limite para eles é de 24 horas (na prática, sem limite; dá para cancelar pelo app).
+const LOCAL_REQUEST_TIMEOUT_DURATION: Duration = Duration::from_secs(24 * 60 * 60);
+
+fn request_timeout_for(provider: &LLMProvider) -> Duration {
+    if provider == &LLMProvider::Ollama {
+        LOCAL_REQUEST_TIMEOUT_DURATION
+    } else {
+        REQUEST_TIMEOUT_DURATION
+    }
+}
 
 async fn await_or_cancel<T>(
     operation: impl Future<Output = T>,
@@ -392,13 +403,14 @@ pub(crate) async fn generate_summary(
     };
 
     info!("🐞 LLM Request to {}: model={}", provider_name(provider), model_name);
+    let request_timeout = request_timeout_for(provider);
 
     // Send request with timeout and cancellation support
     let request_future = client
         .post(api_url.clone())
         .headers(headers.clone())
         .json(&request_body)
-        .timeout(REQUEST_TIMEOUT_DURATION)
+        .timeout(request_timeout)
         .send();
 
     // Use tokio::select to race between cancellation and request completion
@@ -409,7 +421,7 @@ pub(crate) async fn generate_summary(
                     if e.is_timeout() {
                         format!(
                             "LLM request timed out after {} seconds",
-                            REQUEST_TIMEOUT_DURATION.as_secs()
+                            request_timeout.as_secs()
                         )
                     } else {
                         format!("Failed to send request to LLM: {}", e)
@@ -425,7 +437,7 @@ pub(crate) async fn generate_summary(
             if e.is_timeout() {
                 format!(
                     "LLM request timed out after {} seconds",
-                    REQUEST_TIMEOUT_DURATION.as_secs()
+                    request_timeout.as_secs()
                 )
             } else {
                 format!("Failed to send request to LLM: {}", e)
@@ -457,7 +469,7 @@ pub(crate) async fn generate_summary(
             .post(api_url)
             .headers(headers)
             .json(&retry_body)
-            .timeout(REQUEST_TIMEOUT_DURATION)
+            .timeout(request_timeout)
             .send();
         await_or_cancel(retry_future, cancellation_token)
             .await?
@@ -465,7 +477,7 @@ pub(crate) async fn generate_summary(
                 if e.is_timeout() {
                     format!(
                         "LLM retry request timed out after {} seconds",
-                        REQUEST_TIMEOUT_DURATION.as_secs()
+                        request_timeout.as_secs()
                     )
                 } else {
                     format!("Failed to send retry request to LLM: {}", e)
