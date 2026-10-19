@@ -65,6 +65,11 @@ impl SourceTracker {
         }
     }
 
+    /// Tempo atual da sessão (ms), na mesma linha do tempo dos trechos do VAD.
+    pub fn now_ms(&self) -> f64 {
+        self.mixed_samples as f64 * 1000.0 / self.sample_rate
+    }
+
     /// Registra uma janela de mixagem (mesma linha do tempo que o VAD recebe).
     pub fn record_window(&mut self, mic_window: &[f32], sys_window: &[f32]) {
         let len = mic_window.len().max(sys_window.len()) as u64;

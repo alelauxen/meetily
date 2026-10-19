@@ -52,7 +52,7 @@ impl ContinuousVadProcessor {
         // latency. A qualifying silence is still required; bounded uninterrupted-
         // speech delivery is tracked in #756.
         config.redemption_time = Duration::from_millis(redemption_time_ms as u64);
-        config.pre_speech_pad = Duration::from_millis(300);   // Pre-speech padding for context
+        config.pre_speech_pad = Duration::from_millis(500);   // Versão personalizada: 300→500ms para não cortar o começo das frases
         config.post_speech_pad = Duration::from_millis(400);  // Increased: more context at end
 
         // CRITICAL FIX: Increased min_speech_time to prevent tiny 40ms fragments

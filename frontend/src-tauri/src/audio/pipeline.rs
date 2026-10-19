@@ -13,6 +13,7 @@ use super::recording_state::{AudioChunk, AudioError, RecordingState, DeviceType}
 use super::audio_processing::{audio_to_mono, LoudnessNormalizer, NoiseSuppressionProcessor, HighPassFilter};
 use super::vad::{ContinuousVadProcessor};
 use super::speaker_source::{self, SourceTracker};
+use super::segment_coalescer::{MergedSegment, SegmentCoalescer};
 
 /// How long a silence must last before the VAD closes a speech segment, and
 /// therefore how long the audio clips handed to the ASR engine are.
@@ -710,6 +711,8 @@ pub struct AudioPipeline {
     recording_sender_for_mixed: Option<mpsc::UnboundedSender<AudioChunk>>,
     // Versão personalizada: origem aproximada da fala (Local x Remoto)
     source_tracker: SourceTracker,
+    // Versão personalizada: junta trechos curtos antes de transcrever
+    coalescer: SegmentCoalescer,
 }
 
 impl AudioPipeline {
@@ -791,6 +794,7 @@ impl AudioPipeline {
             mixer,
             recording_sender_for_mixed: None,  // Will be set by manager
             source_tracker,
+            coalescer: SegmentCoalescer::new(),
         })
     }
 
@@ -872,30 +876,16 @@ impl AudioPipeline {
                                         let duration_ms = segment.end_timestamp_ms - segment.start_timestamp_ms;
 
                                         if segment.samples.len() >= 800 {  // Minimum 50ms at 16kHz - matches Parakeet capability
-                                            info!("📤 Sending VAD segment: {:.1}ms, {} samples",
+                                            info!("📥 VAD segment: {:.1}ms, {} samples",
                                                   duration_ms, segment.samples.len());
-
-                                            let label = self.source_tracker.classify(
+                                            // Versão personalizada: trechos curtos esperam para serem unidos
+                                            let ready = self.coalescer.push(
+                                                segment.samples,
                                                 segment.start_timestamp_ms,
                                                 segment.end_timestamp_ms,
                                             );
-                                            if let Some(label) = label {
-                                                speaker_source::set_chunk_label(self.chunk_id_counter, label);
-                                            }
-
-                                            let transcription_chunk = AudioChunk {
-                                                data: segment.samples,
-                                                sample_rate: 16000,
-                                                timestamp: segment.start_timestamp_ms / 1000.0,
-                                                chunk_id: self.chunk_id_counter,
-                                                device_type: DeviceType::Microphone,  // Mixed audio
-                                            };
-
-                                            if let Err(e) = self.transcription_sender.send(transcription_chunk) {
-                                                warn!("Failed to send VAD segment: {}", e);
-                                                let _ = speaker_source::take_chunk_label(self.chunk_id_counter);
-                                            } else {
-                                                self.chunk_id_counter += 1;
+                                            for merged in ready {
+                                                self.send_transcription_segment(merged, false);
                                             }
                                         } else {
                                             debug!("⏭️ Dropping short VAD segment: {:.1}ms ({} samples < 800)",
@@ -921,13 +911,17 @@ impl AudioPipeline {
                             }
                         }
                     }
+
+                    // Versão personalizada: envia trecho curto pendente após silêncio
+                    self.tick_coalescer();
                 }
                 Ok(None) => {
                     info!("Audio pipeline: sender closed after processing {} chunks", self.processed_chunks);
                     break;
                 }
                 Err(_) => {
-                    // Timeout - just continue, VAD handles all segmentation
+                    // Timeout - VAD handles segmentation; check pending short segment
+                    self.tick_coalescer();
                     continue;
                 }
             }
@@ -951,29 +945,15 @@ impl AudioPipeline {
 
                     // Send segments >= 50ms (800 samples at 16kHz) - matches main pipeline filter
                     if segment.samples.len() >= 800 {
-                        info!("📤 Sending final VAD segment to Whisper: {:.1}ms duration, {} samples",
+                        info!("📥 Final VAD segment: {:.1}ms, {} samples",
                               duration_ms, segment.samples.len());
-
-                        if let Some(label) = self.source_tracker.classify(
+                        let ready = self.coalescer.push(
+                            segment.samples,
                             segment.start_timestamp_ms,
                             segment.end_timestamp_ms,
-                        ) {
-                            speaker_source::set_chunk_label(self.chunk_id_counter, label);
-                        }
-
-                        let transcription_chunk = AudioChunk {
-                            data: segment.samples,
-                            sample_rate: 16000,
-                            timestamp: segment.start_timestamp_ms / 1000.0,
-                            chunk_id: self.chunk_id_counter,
-                            device_type: DeviceType::Microphone,
-                        };
-
-                        if let Err(e) = self.transcription_sender.send(transcription_chunk) {
-                            warn!("Failed to send final VAD segment: {}", e);
-                            let _ = speaker_source::take_chunk_label(self.chunk_id_counter);
-                        } else {
-                            self.chunk_id_counter += 1;
+                        );
+                        for merged in ready {
+                            self.send_transcription_segment(merged, true);
                         }
                     } else {
                         info!("⏭️ Skipping short final segment: {:.1}ms ({} samples < 800)",
@@ -986,7 +966,51 @@ impl AudioPipeline {
             }
         }
 
+        // Envia o trecho curto que ainda estava esperando para ser unido
+        if let Some(merged) = self.coalescer.flush() {
+            self.send_transcription_segment(merged, true);
+        }
+
         Ok(())
+    }
+
+    /// Versão personalizada: envia um trecho (possivelmente unido) para transcrição,
+    /// com o rótulo de origem da fala (Local/Remoto).
+    fn send_transcription_segment(&mut self, merged: MergedSegment, is_final: bool) {
+        let duration_ms = merged.end_ms - merged.start_ms;
+        info!(
+            "📤 Sending {}segment to transcription: {:.1}ms, {} samples",
+            if is_final { "final " } else { "" },
+            duration_ms,
+            merged.samples.len()
+        );
+
+        if let Some(label) = self.source_tracker.classify(merged.start_ms, merged.end_ms) {
+            speaker_source::set_chunk_label(self.chunk_id_counter, label);
+        }
+
+        let transcription_chunk = AudioChunk {
+            data: merged.samples,
+            sample_rate: 16000,
+            timestamp: merged.start_ms / 1000.0,
+            chunk_id: self.chunk_id_counter,
+            device_type: DeviceType::Microphone, // Mixed audio
+        };
+
+        if let Err(e) = self.transcription_sender.send(transcription_chunk) {
+            warn!("Failed to send VAD segment: {}", e);
+            let _ = speaker_source::take_chunk_label(self.chunk_id_counter);
+        } else {
+            self.chunk_id_counter += 1;
+        }
+    }
+
+    /// Envia o trecho pendente se a pessoa ficou em silêncio tempo suficiente.
+    fn tick_coalescer(&mut self) {
+        let now_ms = self.source_tracker.now_ms();
+        if let Some(merged) = self.coalescer.tick(now_ms) {
+            self.send_transcription_segment(merged, false);
+        }
     }
 
 }
