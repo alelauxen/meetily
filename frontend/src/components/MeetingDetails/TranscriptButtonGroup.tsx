@@ -3,7 +3,13 @@
 import { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
-import { Copy, FolderOpen, RefreshCw } from 'lucide-react';
+import { Copy, FileDown, FileText, FolderOpen, RefreshCw } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import Analytics from '@/lib/analytics';
 import { RetranscribeDialog } from './RetranscribeDialog';
 import { useConfig } from '@/contexts/ConfigContext';
@@ -12,6 +18,7 @@ import { useConfig } from '@/contexts/ConfigContext';
 interface TranscriptButtonGroupProps {
   transcriptCount: number;
   onCopyTranscript: () => void;
+  onExportTranscript?: (format: 'txt' | 'docx') => Promise<void>;
   onOpenMeetingFolder: () => Promise<void>;
   meetingId?: string;
   meetingFolderPath?: string | null;
@@ -22,6 +29,7 @@ interface TranscriptButtonGroupProps {
 export function TranscriptButtonGroup({
   transcriptCount,
   onCopyTranscript,
+  onExportTranscript,
   onOpenMeetingFolder,
   meetingId,
   meetingFolderPath,
@@ -54,6 +62,32 @@ export function TranscriptButtonGroup({
           <Copy />
           <span className="hidden @[22rem]:inline">Copy</span>
         </Button>
+
+        {/* Versão personalizada: exportar a transcrição */}
+        {onExportTranscript && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="px-2 @[22rem]:px-3"
+                disabled={transcriptCount === 0}
+                title="Exportar transcrição"
+              >
+                <FileDown />
+                <span className="hidden @[22rem]:inline">Exportar</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onClick={() => { void onExportTranscript('docx'); }}>
+                <FileText className="mr-2 h-4 w-4" /> Word (.docx)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { void onExportTranscript('txt'); }}>
+                <FileText className="mr-2 h-4 w-4" /> Texto (.txt)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
 
         <Button
           size="sm"

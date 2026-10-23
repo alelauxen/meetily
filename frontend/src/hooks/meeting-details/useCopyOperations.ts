@@ -5,6 +5,12 @@ import { toast } from 'sonner';
 import Analytics from '@/lib/analytics';
 import { invoke as invokeTauri } from '@tauri-apps/api/core';
 import { hasVisibleSummaryContent } from '@/lib/summary-content';
+import {
+  buildTranscriptDocx,
+  buildTranscriptTxt,
+  saveToDownloads,
+  textToBytes,
+} from '@/lib/transcript-io';
 
 interface UseCopyOperationsProps {
   meeting: any;
@@ -201,7 +207,41 @@ export function useCopyOperations({
     }
   }, [aiSummary, meetingTitle, meeting, getSummaryMarkdown]);
 
+  // Versão personalizada: exportar a transcrição completa em TXT ou Word
+  const handleExportTranscript = useCallback(async (format: 'txt' | 'docx') => {
+    try {
+      const allTranscripts = await fetchAllTranscripts(meeting.id);
+      if (!allTranscripts.length) {
+        toast.error('Não há transcrição para exportar');
+        return;
+      }
+      const title = meetingTitle || meeting.title || 'Reunião';
+      const dateLabel = meeting.created_at
+        ? new Date(meeting.created_at).toLocaleString('pt-BR', {
+            day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+          })
+        : '';
+      const segments = allTranscripts.map(t => ({ text: t.text, start: t.audio_start_time ?? null }));
+      const data = format === 'txt'
+        ? textToBytes(buildTranscriptTxt(title, dateLabel, segments))
+        : await buildTranscriptDocx(title, dateLabel, segments);
+      const path = await saveToDownloads(title, format, data);
+      toast.success(`Transcrição salva em Downloads (${format === 'txt' ? 'texto' : 'Word'})`, {
+        description: path,
+        action: {
+          label: 'Abrir',
+          onClick: () => { invokeTauri('open_exported_file', { path }).catch(err => toast.error(String(err))); },
+        },
+        duration: 10000,
+      });
+    } catch (error) {
+      console.error('Failed to export transcript:', error);
+      toast.error('Não foi possível exportar a transcrição', { description: String(error) });
+    }
+  }, [meeting, meetingTitle, fetchAllTranscripts]);
+
   return {
+    handleExportTranscript,
     handleCopyTranscript,
     handleCopySummary,
     getSummaryMarkdown,

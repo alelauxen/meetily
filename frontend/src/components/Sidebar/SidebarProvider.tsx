@@ -212,7 +212,10 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   ) => {
     stopSummaryPolling(meetingId);
     let pollCount = 0;
-    const maxPolls = 200;
+    // Versão personalizada: antes eram 200 consultas (~16 min) e a tela dava erro mesmo
+    // com a IA ainda trabalhando. Agora acompanha até 24 h, o mesmo limite do backend;
+    // o usuário pode cancelar pelo botão de parar.
+    const maxPolls = (24 * 60 * 60) / 5;
     const poll = async () => {
       const entry = summaryPollsRef.current.get(meetingId);
       if (!entry || entry.processId !== processId || entry.inFlight) {
@@ -229,7 +232,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
             start: processId,
             end: null,
             data: null,
-            error: 'Summary generation timed out after 15 minutes. Please try again or check your model configuration.',
+            error: 'A geração do resumo passou de 24 horas e foi interrompida. Tente novamente ou verifique o modelo de IA.',
           });
           if (summaryPollsRef.current.get(meetingId) === entry) {
             stopSummaryPolling(meetingId, processId);
